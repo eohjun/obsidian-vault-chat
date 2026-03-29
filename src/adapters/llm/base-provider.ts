@@ -21,9 +21,11 @@ export abstract class BaseProvider implements IAIProvider {
     url: string,
     method: string,
     headers: Record<string, string>,
-    body: string
+    body?: string
   ): Promise<T> {
-    const response = await requestUrl({ url, method, headers, body });
+    const opts: any = { url, method, headers };
+    if (body) opts.body = body;
+    const response = await requestUrl(opts);
     return response.json as T;
   }
 

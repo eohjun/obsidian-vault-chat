@@ -13,22 +13,18 @@ export class GeminiProvider extends BaseProvider {
 
   async testApiKey(apiKey: string): Promise<boolean> {
     try {
-      const model = this.config.defaultModel;
-      const url = getGeminiGenerateUrl(model, apiKey);
-      const body = buildGeminiBody(
-        [{ role: 'user', content: 'Hello' }],
-        model,
-        { maxTokens: 10 }
-      );
-      await this.makeRequest(
-        url,
-        'POST',
-        { 'Content-Type': 'application/json' },
-        JSON.stringify(body)
-      );
+      // Use models.list endpoint for auth-only validation
+      const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`;
+      await this.makeRequest(url, 'GET', { 'Content-Type': 'application/json' });
       return true;
-    } catch {
-      return false;
+    } catch (error) {
+      if (error instanceof Error) {
+        const msg = error.message;
+        if (msg.includes('400') || msg.includes('401') || msg.includes('403') || msg.includes('invalid')) {
+          return false;
+        }
+      }
+      return true;
     }
   }
 

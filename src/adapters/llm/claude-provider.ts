@@ -13,12 +13,12 @@ export class ClaudeProvider extends BaseProvider {
 
   async testApiKey(apiKey: string): Promise<boolean> {
     try {
-      const model = this.config.defaultModel;
       const headers = getAnthropicHeaders(apiKey);
+      // Use a minimal messages request to validate the key
       const body = buildAnthropicBody(
-        [{ role: 'user', content: 'Hello' }],
-        model,
-        { maxTokens: 10 }
+        [{ role: 'user', content: 'Hi' }],
+        'claude-haiku-4-5',
+        { maxTokens: 1 }
       );
       await this.makeRequest(
         `${this.config.endpoint}/messages`,
@@ -27,8 +27,16 @@ export class ClaudeProvider extends BaseProvider {
         JSON.stringify(body)
       );
       return true;
-    } catch {
-      return false;
+    } catch (error) {
+      // 401/403 = bad key, other errors (e.g. model not found) = key is valid
+      if (error instanceof Error) {
+        const msg = error.message;
+        if (msg.includes('401') || msg.includes('403') || msg.includes('authentication') || msg.includes('invalid')) {
+          return false;
+        }
+      }
+      // Non-auth errors mean the key itself is valid
+      return true;
     }
   }
 

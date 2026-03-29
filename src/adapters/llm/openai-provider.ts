@@ -13,22 +13,23 @@ export class OpenAIProvider extends BaseProvider {
 
   async testApiKey(apiKey: string): Promise<boolean> {
     try {
-      const model = this.config.defaultModel;
       const headers = getOpenAIHeaders(apiKey);
-      const body = buildOpenAIBody(
-        [{ role: 'user', content: 'Hello' }],
-        model,
-        { maxTokens: 10 }
-      );
+      // /v1/models only requires valid auth, no model dependency
       await this.makeRequest(
-        `${this.config.endpoint}/chat/completions`,
-        'POST',
-        headers,
-        JSON.stringify(body)
+        `${this.config.endpoint}/models`,
+        'GET',
+        headers
       );
       return true;
-    } catch {
-      return false;
+    } catch (error) {
+      if (error instanceof Error) {
+        const msg = error.message;
+        if (msg.includes('401') || msg.includes('403') || msg.includes('invalid')) {
+          return false;
+        }
+      }
+      // Non-auth errors mean the key itself is valid
+      return true;
     }
   }
 

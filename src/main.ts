@@ -5,6 +5,8 @@ import { ChatService } from './core/application/services/chat-service';
 import { NoteExportService } from './core/application/services/note-export-service';
 import { VaultEmbeddingsRetriever } from './adapters/retrieval/vault-embeddings-retriever';
 import { SessionRepository } from './adapters/storage/session-repository';
+import { VaultReader } from './adapters/vault/vault-reader';
+import { NoteWriter } from './adapters/vault/note-writer';
 import { ChatView, VIEW_TYPE_VAULT_CHAT } from './ui/chat-view';
 import { VaultChatSettingTab } from './ui/settings-tab';
 import { ClaudeProvider } from './adapters/llm/claude-provider';
@@ -30,17 +32,21 @@ export default class VaultChatPlugin extends Plugin {
     this.aiService = new AIService(this.settings.ai, providers);
     this.retrievalService = new VaultEmbeddingsRetriever(this.app);
     const sessionRepository = new SessionRepository(this);
+
+    const vaultReader = new VaultReader(this.app);
+    const noteWriter = new NoteWriter(this.app);
+
     this.chatService = new ChatService(
-      this.app,
+      vaultReader,
       this.aiService,
       this.retrievalService,
       sessionRepository,
       this.settings
     );
     this.noteExportService = new NoteExportService(
-      this.app,
+      noteWriter,
       this.aiService,
-      this.settings
+      this.settings.export
     );
 
     // 3. View
@@ -80,6 +86,7 @@ export default class VaultChatPlugin extends Plugin {
     await this.saveData(this.settings);
     this.aiService.updateSettings(this.settings.ai);
     this.chatService.updateSettings(this.settings);
+    this.noteExportService.updateSettings(this.settings.export);
   }
 
   private async activateView(): Promise<void> {

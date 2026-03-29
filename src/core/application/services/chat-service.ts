@@ -1,26 +1,31 @@
-import { App, TFile } from 'obsidian';
-import { getModelConfig } from 'obsidian-llm-shared';
+import { getModelConfig } from '../../domain/constants/model-configs';
 import { ChatMessage, SourceNote, createChatMessage } from '../../domain/entities/chat-message';
 import { ChatSession, createChatSession } from '../../domain/entities/chat-session';
+import { IVaultReader } from '../../domain/interfaces/i-vault-reader';
 import { IRetrievalService } from '../../domain/interfaces/i-retrieval-service';
 import { ISessionRepository } from '../../domain/interfaces/i-session-repository';
 import { AIService } from './ai-service';
 import { ContextBuilder, NoteContent } from './context-builder';
-import { VaultChatSettings } from '../../../settings';
+
+export interface ChatServiceConfig {
+  ai: { provider: string; models: Record<string, string> };
+  retrieval: { topK: number; similarityThreshold: number; targetFolder: string };
+  chat: { maxHistoryTurns: number; maxSessions: number };
+}
 
 export class ChatService {
   private currentSession: ChatSession | null = null;
 
   constructor(
-    private readonly app: App,
+    private readonly vaultReader: IVaultReader,
     private readonly aiService: AIService,
     private readonly retrievalService: IRetrievalService,
     private readonly sessionRepository: ISessionRepository,
-    private readonly settings: VaultChatSettings
+    private settings: ChatServiceConfig
   ) {}
 
-  updateSettings(settings: VaultChatSettings): void {
-    (this as any).settings = settings;
+  updateSettings(settings: ChatServiceConfig): void {
+    this.settings = settings;
   }
 
   getCurrentSession(): ChatSession | null {
@@ -108,19 +113,14 @@ export class ChatService {
     const contents: NoteContent[] = [];
 
     for (const source of sources) {
-      const file = this.app.vault.getAbstractFileByPath(source.notePath);
-      if (file instanceof TFile) {
-        try {
-          const content = await this.app.vault.cachedRead(file);
-          contents.push({
-            title: source.title,
-            path: source.notePath,
-            content,
-            similarity: source.similarity,
-          });
-        } catch {
-          // Skip unreadable files
-        }
+      const content = await this.vaultReader.readNote(source.notePath);
+      if (content !== null) {
+        contents.push({
+          title: source.title,
+          path: source.notePath,
+          content,
+          similarity: source.similarity,
+        });
       }
     }
 

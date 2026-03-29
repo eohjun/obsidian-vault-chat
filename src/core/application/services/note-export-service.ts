@@ -1,8 +1,7 @@
-import { App, TFile, normalizePath } from 'obsidian';
 import { LLMMessage } from 'obsidian-llm-shared';
 import { ChatSession } from '../../domain/entities/chat-session';
+import { INoteWriter } from '../../domain/interfaces/i-note-writer';
 import { AIService } from './ai-service';
-import { VaultChatSettings } from '../../../settings';
 
 const EXPORT_SYSTEM_PROMPT = `You are organizing a conversation into a structured Literature Note.
 
@@ -15,12 +14,20 @@ Rules:
 - Extract key insights and conclusions, not a verbatim transcript
 - Include relevant connections between mentioned notes`;
 
+export interface NoteExportConfig {
+  outputFolder: string;
+}
+
 export class NoteExportService {
   constructor(
-    private readonly app: App,
+    private readonly noteWriter: INoteWriter,
     private readonly aiService: AIService,
-    private readonly settings: VaultChatSettings
+    private settings: NoteExportConfig
   ) {}
+
+  updateSettings(settings: NoteExportConfig): void {
+    this.settings = settings;
+  }
 
   async export(session: ChatSession): Promise<string> {
     // 1. Build conversation text for LLM
@@ -78,20 +85,15 @@ export class NoteExportService {
     const body = response.text;
     const fullContent = `${frontmatter}\n\n${body}\n`;
 
-    // 6. Save to vault
+    // 6. Save to vault via INoteWriter
     const safeName = title.replace(/[\\/:*?"<>|]/g, '_').slice(0, 80);
     const fileName = `VaultChat_${date.replace(/-/g, '')}_${safeName}.md`;
-    const filePath = normalizePath(
-      `${this.settings.export.outputFolder}/${fileName}`
+
+    const filePath = await this.noteWriter.createNote(
+      this.settings.outputFolder,
+      fileName,
+      fullContent
     );
-
-    // Ensure folder exists
-    const folder = this.settings.export.outputFolder;
-    if (!this.app.vault.getAbstractFileByPath(folder)) {
-      await this.app.vault.createFolder(folder);
-    }
-
-    await this.app.vault.create(filePath, fullContent);
 
     return filePath;
   }

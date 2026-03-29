@@ -1,6 +1,6 @@
 {
   "name": "obsidian-vault-chat",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Obsidian RAG chat plugin - ask questions answered by your vault notes",
   "main": "main.js",
   "scripts": {

@@ -45,6 +45,11 @@ export class OpenAIProvider extends BaseProvider {
       temperature: options?.temperature,
     });
 
+    // Remove reasoning param when not needed — avoids 400 from API
+    if (body.reasoning && (body.reasoning as any).effort === 'none') {
+      delete body.reasoning;
+    }
+
     try {
       const raw = await this.makeRequest<unknown>(
         `${this.config.endpoint}/chat/completions`,

@@ -46,6 +46,8 @@
   margin-bottom: 16px;
   padding: 8px 12px;
   border-radius: 8px;
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 .vault-chat-message-user {
@@ -67,6 +69,9 @@
 .vault-chat-message-content {
   font-size: var(--font-ui-small);
   line-height: 1.5;
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
 }
 
 .vault-chat-message-content p {

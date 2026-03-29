@@ -23,9 +23,16 @@ export abstract class BaseProvider implements IAIProvider {
     headers: Record<string, string>,
     body?: string
   ): Promise<T> {
-    const opts: any = { url, method, headers };
+    const opts: any = { url, method, headers, throw: false };
     if (body) opts.body = body;
     const response = await requestUrl(opts);
+
+    // requestUrl with throw:false returns response even on error status
+    if (response.status >= 400) {
+      const errorBody = response.json?.error?.message || response.text || `status ${response.status}`;
+      throw new Error(`API error (${response.status}): ${errorBody}`);
+    }
+
     return response.json as T;
   }
 

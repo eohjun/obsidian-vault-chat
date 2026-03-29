@@ -7,6 +7,9 @@ import { VaultEmbeddingsRetriever } from './adapters/retrieval/vault-embeddings-
 import { SessionRepository } from './adapters/storage/session-repository';
 import { ChatView, VIEW_TYPE_VAULT_CHAT } from './ui/chat-view';
 import { VaultChatSettingTab } from './ui/settings-tab';
+import { ClaudeProvider } from './adapters/llm/claude-provider';
+import { OpenAIProvider } from './adapters/llm/openai-provider';
+import { GeminiProvider } from './adapters/llm/gemini-provider';
 
 export default class VaultChatPlugin extends Plugin {
   settings!: VaultChatSettings;
@@ -20,7 +23,11 @@ export default class VaultChatPlugin extends Plugin {
     await this.loadSettings();
 
     // 2. Services
-    this.aiService = new AIService(this.settings.ai);
+    const providers = new Map();
+    providers.set('claude', new ClaudeProvider());
+    providers.set('openai', new OpenAIProvider());
+    providers.set('gemini', new GeminiProvider());
+    this.aiService = new AIService(this.settings.ai, providers);
     this.retrievalService = new VaultEmbeddingsRetriever(this.app);
     const sessionRepository = new SessionRepository(this);
     this.chatService = new ChatService(

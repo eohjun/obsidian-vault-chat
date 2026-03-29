@@ -3,10 +3,7 @@ import {
   LLMMessage,
   LLMCompletionResponse,
 } from 'obsidian-llm-shared';
-import { AIProvider, AIRequestOptions } from '../../../adapters/llm/base-provider';
-import { ClaudeProvider } from '../../../adapters/llm/claude-provider';
-import { OpenAIProvider } from '../../../adapters/llm/openai-provider';
-import { GeminiProvider } from '../../../adapters/llm/gemini-provider';
+import { IAIProvider, AIRequestOptions } from '../../domain/interfaces/i-ai-provider';
 import { executeWithRetry } from './retry-service';
 
 export interface AIServiceSettings {
@@ -17,29 +14,28 @@ export interface AIServiceSettings {
 }
 
 export class AIService {
-  private providers: Map<AIProviderType, AIProvider> = new Map();
   private settings: AIServiceSettings;
 
-  constructor(settings: AIServiceSettings) {
+  constructor(
+    settings: AIServiceSettings,
+    private readonly providers: Map<string, IAIProvider>
+  ) {
     this.settings = settings;
-    this.providers.set('claude', new ClaudeProvider());
-    this.providers.set('openai', new OpenAIProvider());
-    this.providers.set('gemini', new GeminiProvider());
   }
 
   updateSettings(settings: AIServiceSettings): void {
     this.settings = settings;
   }
 
-  getCurrentProvider(): AIProvider | undefined {
+  getCurrentProvider(): IAIProvider | undefined {
     return this.providers.get(this.settings.provider);
   }
 
-  getProvider(providerId: AIProviderType): AIProvider | undefined {
+  getProvider(providerId: string): IAIProvider | undefined {
     return this.providers.get(providerId);
   }
 
-  async testApiKey(providerId: AIProviderType): Promise<boolean> {
+  async testApiKey(providerId: string): Promise<boolean> {
     const provider = this.providers.get(providerId);
     const apiKey = this.settings.apiKeys[providerId];
     if (!provider || !apiKey) return false;

@@ -6,25 +6,11 @@ import {
   LLMMessage,
   LLMCompletionResponse,
 } from 'obsidian-llm-shared';
+import { IAIProvider, AIRequestOptions } from '../../core/domain/interfaces/i-ai-provider';
 
-export interface AIRequestOptions {
-  model?: string;
-  temperature?: number;
-  maxTokens?: number;
-}
+export type { AIRequestOptions } from '../../core/domain/interfaces/i-ai-provider';
 
-export interface AIProvider {
-  readonly id: AIProviderType;
-  readonly config: AIProviderConfig;
-  testApiKey(apiKey: string): Promise<boolean>;
-  generateText(
-    messages: LLMMessage[],
-    apiKey: string,
-    options?: AIRequestOptions
-  ): Promise<LLMCompletionResponse>;
-}
-
-export abstract class BaseProvider implements AIProvider {
+export abstract class BaseProvider implements IAIProvider {
   abstract readonly id: AIProviderType;
 
   get config(): AIProviderConfig {

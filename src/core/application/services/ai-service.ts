@@ -15,12 +15,18 @@ export interface AIServiceSettings {
 
 export class AIService {
   private settings: AIServiceSettings;
+  private aborted = false;
 
   constructor(
     settings: AIServiceSettings,
     private readonly providers: Map<string, IAIProvider>
   ) {
     this.settings = settings;
+  }
+
+  /** Call on plugin unload to cancel any in-flight LLM requests. */
+  abort(): void {
+    this.aborted = true;
   }
 
   updateSettings(settings: AIServiceSettings): void {
@@ -49,6 +55,9 @@ export class AIService {
     const provider = this.getCurrentProvider();
     const apiKey = this.settings.apiKeys[this.settings.provider];
 
+    if (this.aborted) {
+      return { success: false, text: '', model: '', usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 }, error: 'Plugin is unloading' };
+    }
     if (!provider) {
       return { success: false, text: '', model: '', usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 }, error: 'No provider selected' };
     }

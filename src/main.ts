@@ -71,7 +71,7 @@ export default class VaultChatPlugin extends Plugin {
   }
 
   onunload(): void {
-    // View cleanup is automatic via registerView
+    this.aiService.abort();
   }
 
   async loadSettings(): Promise<void> {

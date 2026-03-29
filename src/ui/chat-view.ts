@@ -44,6 +44,14 @@ export class ChatView extends ItemView {
 
     if (!this.retrievalService.isAvailable()) {
       this.renderUnavailableState(container as HTMLElement);
+      // Re-check every 5 seconds in case the user enables Vault Embeddings after opening
+      this.registerInterval(
+        window.setInterval(() => {
+          if (this.retrievalService.isAvailable()) {
+            this.onOpen();
+          }
+        }, 5000)
+      );
       return;
     }
 

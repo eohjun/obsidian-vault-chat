@@ -93,6 +93,7 @@ export class ChatView extends ItemView {
   }
 
   async onClose(): Promise<void> {
+    this.messageList?.destroy();
     this.containerEl.empty();
   }
 

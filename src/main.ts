@@ -1,4 +1,5 @@
 import { Plugin, WorkspaceLeaf, Notice, TFile, TAbstractFile, debounce } from 'obsidian';
+import { ProgressModal } from './ui/progress-modal';
 import { VaultChatSettings, DEFAULT_SETTINGS } from './settings';
 import { AIService } from './core/application/services/ai-service';
 import { ChatService } from './core/application/services/chat-service';
@@ -154,26 +155,33 @@ export default class VaultChatPlugin extends Plugin {
       return;
     }
 
-    new Notice('Building chunk index...');
+    const modal = new ProgressModal(this.app, 'Building Chunk Index');
+    modal.open();
 
     try {
       const result = await this.chunkEmbeddingService.buildIndex(
         this.settings.retrieval.targetFolder,
         [],
         (progress) => {
-          if (progress.completed % 50 === 0) {
-            new Notice(
-              `Chunk index: ${progress.completed}/${progress.total} notes processed`
-            );
-          }
+          const pct = progress.total > 0
+            ? (progress.completed / progress.total) * 100
+            : 0;
+          modal.updateProgress({
+            current: progress.completed,
+            total: progress.total,
+            message: progress.currentNote
+              ? `Processing: ${progress.currentNote}`
+              : 'Preparing...',
+            percentage: pct,
+          });
         }
       );
 
-      new Notice(
-        `Chunk index complete: ${result.embedded} chunks, ${result.skipped} skipped, ${result.failed} failed`
+      modal.setComplete(
+        `Complete: ${result.embedded} chunks embedded, ${result.skipped} skipped, ${result.failed} failed`
       );
     } catch (e) {
-      new Notice(`Failed to build chunk index: ${e}`);
+      modal.setError(`Failed: ${e}`);
     }
   }
 

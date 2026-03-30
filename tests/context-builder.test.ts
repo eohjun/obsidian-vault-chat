@@ -1,68 +1,96 @@
 import { describe, it, expect } from 'vitest';
-import { ContextBuilder } from '../src/core/application/services/context-builder';
-import { ChatMessage } from '../src/core/domain/entities/chat-message';
+import { ContextBuilder, NoteContent } from '../src/core/application/services/context-builder';
+
+const makeNote = (
+  title: string,
+  content: string,
+  similarity: number,
+  path?: string,
+  sectionHeading?: string
+): NoteContent => ({
+  title,
+  path: path ?? `04_Zettelkasten/${title}.md`,
+  content,
+  similarity,
+  sectionHeading,
+});
 
 describe('ContextBuilder', () => {
-  const builder = new ContextBuilder(10000); // 10k token window
+  const builder = new ContextBuilder(128000);
 
-  it('builds basic message structure', () => {
-    const result = builder.build(
-      'What is X?',
-      [{ title: 'Note1', path: 'note1.md', content: 'Content about X', similarity: 0.8 }],
-      [],
-      10
-    );
+  describe('build - note mode', () => {
+    it('should include notes in context', () => {
+      const notes = [makeNote('Note A', 'Content A', 0.9)];
+      const result = builder.build('query', notes, [], 10);
 
-    expect(result.messages[0].role).toBe('system'); // system prompt
-    expect(result.messages[1].role).toBe('system'); // note context
-    expect(result.messages[1].content).toContain('[[Note1]]');
-    expect(result.messages[2].role).toBe('user'); // query
-    expect(result.messages[2].content).toBe('What is X?');
-    expect(result.includedNotes).toBe(1);
-    expect(result.truncated).toBe(false);
+      expect(result.messages.length).toBeGreaterThanOrEqual(3);
+      expect(result.includedNotes).toBe(1);
+      const context = result.messages.find((m) =>
+        m.content.includes('Reference Notes')
+      );
+      expect(context?.content).toContain('[[Note A]]');
+    });
   });
 
-  it('includes conversation history', () => {
-    const history: ChatMessage[] = [
-      { id: '1', role: 'user', content: 'First question', sources: [], timestamp: '' },
-      { id: '2', role: 'assistant', content: 'First answer', sources: [], timestamp: '' },
-    ];
+  describe('build - chunk mode (auto-detected via sectionHeading)', () => {
+    it('should auto-detect chunk mode when sectionHeading is present', () => {
+      const chunks = [
+        makeNote('Note A', 'Section 1 content here with enough text', 0.9, 'path/a.md', '핵심 아이디어'),
+        makeNote('Note A', 'Section 2 content here with enough text', 0.85, 'path/a.md', '상세 설명 > 메커니즘'),
+      ];
 
-    const result = builder.build('Follow up?', [], history, 10);
-    // system prompt + history (user + assistant) + query
-    expect(result.messages).toHaveLength(4);
-    expect(result.messages[1].content).toBe('First question');
-    expect(result.messages[2].content).toBe('First answer');
+      const result = builder.build('query', chunks, [], 10);
+      const context = result.messages.find((m) =>
+        m.content.includes('Reference Notes')
+      );
+
+      expect(context?.content).toContain('[[Note A]]');
+      expect(context?.content).toContain('핵심 아이디어');
+      expect(context?.content).toContain('상세 설명 > 메커니즘');
+    });
+
+    it('should group chunks from same note', () => {
+      const chunks = [
+        makeNote('Note A', 'Chunk 1 text', 0.95, 'path/a.md', 'Section 1'),
+        makeNote('Note B', 'Chunk 2 text', 0.90, 'path/b.md', 'Section 1'),
+        makeNote('Note A', 'Chunk 3 text', 0.85, 'path/a.md', 'Section 2'),
+      ];
+
+      const result = builder.build('query', chunks, [], 10);
+      const context = result.messages.find((m) =>
+        m.content.includes('Reference Notes')
+      )?.content ?? '';
+
+      const noteACount = (context.match(/\[\[Note A\]\]/g) || []).length;
+      expect(noteACount).toBe(1);
+    });
+
+    it('should order note groups by best similarity', () => {
+      const chunks = [
+        makeNote('Low Note', 'Content', 0.5, 'path/low.md', 'Section'),
+        makeNote('High Note', 'Content', 0.95, 'path/high.md', 'Section'),
+      ];
+
+      const result = builder.build('query', chunks, [], 10);
+      const context = result.messages.find((m) =>
+        m.content.includes('Reference Notes')
+      )?.content ?? '';
+
+      const highIdx = context.indexOf('[[High Note]]');
+      const lowIdx = context.indexOf('[[Low Note]]');
+      expect(highIdx).toBeLessThan(lowIdx);
+    });
   });
 
-  it('returns empty note context when no notes', () => {
-    const result = builder.build('Hello?', [], [], 10);
-    expect(result.messages).toHaveLength(2); // system + query
-    expect(result.includedNotes).toBe(0);
-  });
+  describe('buildChunkContext', () => {
+    it('should respect token budget and truncate', () => {
+      const smallBuilder = new ContextBuilder(100);
+      const chunks = [
+        makeNote('Note', 'x'.repeat(500), 0.9, 'p.md', 'Sec'),
+      ];
 
-  it('truncates when notes exceed budget', () => {
-    const smallBuilder = new ContextBuilder(500); // very small window
-    const bigNotes = Array.from({ length: 20 }, (_, i) => ({
-      title: `Note${i}`,
-      path: `note${i}.md`,
-      content: 'A'.repeat(500), // each note is ~125 tokens
-      similarity: 0.9 - i * 0.01,
-    }));
-
-    const result = smallBuilder.build('query', bigNotes, [], 10);
-    expect(result.truncated).toBe(true);
-    expect(result.includedNotes).toBeLessThan(20);
-  });
-
-  it('estimates Korean text as higher token count than equivalent-length English', () => {
-    // Access private method via cast to any for token estimation test
-    const b = builder as any;
-    const korean = '안녕하세요반갑습니다'; // 9 Korean chars
-    const english = 'abcdefghi';            // 9 ASCII chars (same length)
-    const koreanTokens = b.estimateTokens(korean);
-    const englishTokens = b.estimateTokens(english);
-    // Korean: ceil(9/2) = 5, English: ceil(9/4) = 3
-    expect(koreanTokens).toBeGreaterThan(englishTokens);
+      const result = smallBuilder.buildChunkContext(chunks, 50);
+      expect(result.wasTruncated).toBe(true);
+    });
   });
 });

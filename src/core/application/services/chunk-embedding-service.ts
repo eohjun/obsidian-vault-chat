@@ -151,6 +151,77 @@ export class ChunkEmbeddingService {
     return { embedded, skipped: progress.skipped, failed: progress.failed };
   }
 
+  /**
+   * Update chunks for a single note (create, modify, or re-embed).
+   * Skips if content is unchanged (SHA-256 hash match).
+   */
+  async updateNote(
+    notePath: string,
+    noteBasename: string
+  ): Promise<{ embedded: number; skipped: boolean }> {
+    if (!this.embeddingGateway.isAvailable()) {
+      return { embedded: 0, skipped: true };
+    }
+
+    const providerInfo = this.embeddingGateway.getProviderInfo();
+    if (!providerInfo) return { embedded: 0, skipped: true };
+
+    const content = await this.vaultReader.readNote(notePath);
+    if (!content) return { embedded: 0, skipped: true };
+
+    const noteId = generateNoteId(notePath);
+    const contentHash = await hashContent(content);
+
+    const index = await this.chunkRepository.getIndex();
+    const existingEntry = index.notes[noteId];
+
+    if (existingEntry && existingEntry.noteContentHash === contentHash) {
+      return { embedded: 0, skipped: true };
+    }
+
+    // Delete old chunks
+    await this.chunkRepository.deleteByNoteId(noteId);
+
+    // Chunk and embed
+    const chunks = chunkNote(content, noteBasename);
+    if (chunks.length === 0) return { embedded: 0, skipped: true };
+
+    const chunkEmbeddings = await this.embedChunks(
+      chunks,
+      noteId,
+      notePath,
+      noteBasename,
+      providerInfo.dimensions
+    );
+
+    await this.chunkRepository.saveBatch(chunkEmbeddings);
+
+    // Update index
+    index.notes[noteId] = {
+      path: notePath,
+      noteContentHash: contentHash,
+      chunkIds: chunkEmbeddings.map((c) => c.chunkId),
+      updatedAt: new Date().toISOString(),
+    };
+    index.totalChunks = Object.values(index.notes).reduce(
+      (sum, n) => sum + n.chunkIds.length,
+      0
+    );
+    index.lastUpdated = new Date().toISOString();
+    index.dimensions = providerInfo.dimensions;
+    await this.chunkRepository.updateIndex(index);
+
+    return { embedded: chunkEmbeddings.length, skipped: false };
+  }
+
+  /**
+   * Delete all chunks for a note by path.
+   */
+  async deleteNote(notePath: string): Promise<void> {
+    const noteId = generateNoteId(notePath);
+    await this.chunkRepository.deleteByNoteId(noteId);
+  }
+
   async updateStaleChunks(
     targetFolder: string,
     excludeFolders: string[],

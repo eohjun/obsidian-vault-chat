@@ -1,4 +1,4 @@
-import { Plugin, WorkspaceLeaf, Notice, TFolder } from 'obsidian';
+import { Plugin, WorkspaceLeaf, Notice, TFile, TAbstractFile, debounce } from 'obsidian';
 import { VaultChatSettings, DEFAULT_SETTINGS } from './settings';
 import { AIService } from './core/application/services/ai-service';
 import { ChatService } from './core/application/services/chat-service';
@@ -124,6 +124,9 @@ export default class VaultChatPlugin extends Plugin {
 
     // 8. Settings tab
     this.addSettingTab(new VaultChatSettingTab(this.app, this));
+
+    // 9. Vault events for incremental chunk updates
+    this.registerVaultEvents();
   }
 
   onunload(): void {
@@ -172,6 +175,106 @@ export default class VaultChatPlugin extends Plugin {
     } catch (e) {
       new Notice(`Failed to build chunk index: ${e}`);
     }
+  }
+
+  private registerVaultEvents(): void {
+    // Debounce modify events (5s) to avoid re-embedding during rapid edits
+    const debouncedModify = debounce(
+      (file: TAbstractFile) => {
+        if (file instanceof TFile && file.extension === 'md') {
+          this.onNoteModified(file);
+        }
+      },
+      5000,
+      true
+    );
+
+    this.registerEvent(
+      this.app.vault.on('modify', debouncedModify)
+    );
+
+    this.registerEvent(
+      this.app.vault.on('delete', (file) => {
+        if (file instanceof TFile && file.extension === 'md') {
+          this.onNoteDeleted(file);
+        }
+      })
+    );
+
+    this.registerEvent(
+      this.app.vault.on('rename', (file, oldPath) => {
+        if (file instanceof TFile && file.extension === 'md') {
+          this.onNoteRenamed(file, oldPath);
+        }
+      })
+    );
+
+    this.registerEvent(
+      this.app.vault.on('create', (file) => {
+        if (file instanceof TFile && file.extension === 'md') {
+          this.onNoteModified(file);
+        }
+      })
+    );
+  }
+
+  private async onNoteModified(file: TFile): Promise<void> {
+    if (!this.shouldAutoUpdateChunks()) return;
+    if (!this.isInTargetFolder(file.path)) return;
+
+    try {
+      const result = await this.chunkEmbeddingService!.updateNote(
+        file.path,
+        file.basename
+      );
+      if (!result.skipped) {
+        console.log(`Chunk auto-update: ${file.basename} → ${result.embedded} chunks`);
+      }
+    } catch (err) {
+      console.error(`Chunk auto-update failed for ${file.path}:`, err);
+    }
+  }
+
+  private async onNoteDeleted(file: TFile): Promise<void> {
+    if (!this.shouldAutoUpdateChunks()) return;
+    if (!this.isInTargetFolder(file.path)) return;
+
+    try {
+      await this.chunkEmbeddingService!.deleteNote(file.path);
+      console.log(`Chunk auto-delete: ${file.basename}`);
+    } catch (err) {
+      console.error(`Chunk delete failed for ${file.path}:`, err);
+    }
+  }
+
+  private async onNoteRenamed(file: TFile, oldPath: string): Promise<void> {
+    if (!this.shouldAutoUpdateChunks()) return;
+
+    try {
+      // Delete chunks for old path
+      if (this.isInTargetFolder(oldPath)) {
+        await this.chunkEmbeddingService!.deleteNote(oldPath);
+      }
+
+      // Re-embed under new path if still in target folder
+      if (this.isInTargetFolder(file.path)) {
+        await this.chunkEmbeddingService!.updateNote(file.path, file.basename);
+      }
+    } catch (err) {
+      console.error(`Chunk rename update failed for ${file.path}:`, err);
+    }
+  }
+
+  private shouldAutoUpdateChunks(): boolean {
+    return (
+      !!this.settings.retrieval.chunkSearch &&
+      !!this.chunkEmbeddingService &&
+      !!this.embeddingGateway?.isAvailable()
+    );
+  }
+
+  private isInTargetFolder(path: string): boolean {
+    return path.startsWith(this.settings.retrieval.targetFolder + '/');
   }
 
   async clearChunkIndex(): Promise<void> {

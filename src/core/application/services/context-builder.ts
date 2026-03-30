@@ -1,5 +1,6 @@
 import { LLMMessage } from 'obsidian-llm-shared';
 import { ChatMessage } from '../../domain/entities/chat-message';
+import { estimateTokens } from '../../domain/utils/token-estimator';
 
 export interface NoteContent {
   title: string;
@@ -178,8 +179,6 @@ export class ContextBuilder {
   }
 
   private estimateTokens(text: string): number {
-    const koreanChars = (text.match(/[\uAC00-\uD7AF]/g) || []).length;
-    const otherChars = text.length - koreanChars;
-    return Math.ceil(koreanChars / 2 + otherChars / 4);
+    return estimateTokens(text);
   }
 }

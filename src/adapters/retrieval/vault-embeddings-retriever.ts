@@ -49,26 +49,20 @@ export class VaultEmbeddingsRetriever implements IRetrievalService {
       throw new VaultEmbeddingsUnavailableError();
     }
 
-    // Build exclude list: all folders EXCEPT targetFolder
-    const allFolders = this.app.vault
-      .getAllLoadedFiles()
-      .filter((f) => (f as any).children !== undefined)
-      .map((f) => f.path);
-
-    const excludeFolders = allFolders.filter(
-      (folder) => !folder.startsWith(options.targetFolder)
-    );
-
+    // Search without folder exclusion, then filter results by targetFolder
+    // (more efficient than enumerating all vault folders for exclusion)
     const results = await plugin.searchSimilar(query, {
-      limit: options.limit,
+      limit: options.limit * 2, // over-fetch to compensate for post-filter
       threshold: options.threshold,
-      excludeFolders,
     });
 
-    return results.map((r) => ({
-      notePath: r.notePath,
-      title: r.title,
-      similarity: r.similarity,
-    }));
+    return results
+      .filter((r) => r.notePath.startsWith(options.targetFolder + '/'))
+      .slice(0, options.limit)
+      .map((r) => ({
+        notePath: r.notePath,
+        title: r.title,
+        similarity: r.similarity,
+      }));
   }
 }

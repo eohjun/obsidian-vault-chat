@@ -26,10 +26,10 @@ export class VaultChatSettingTab extends PluginSettingTab {
   private renderAISection(containerEl: HTMLElement): void {
     containerEl.createEl('h3', { text: 'AI Provider' });
 
-    // Provider selector - only claude, openai, gemini
+    const SUPPORTED_PROVIDERS = ['claude', 'openai', 'gemini'];
     const providerOptions: Record<string, string> = {};
     for (const [id, config] of Object.entries(AI_PROVIDERS)) {
-      if (id === 'grok') continue;
+      if (!SUPPORTED_PROVIDERS.includes(id)) continue;
       providerOptions[id] = config.displayName;
     }
 

@@ -85,7 +85,8 @@ export default class VaultChatPlugin extends Plugin {
     this.noteExportService = new NoteExportService(
       noteWriter,
       this.aiService,
-      this.settings.export
+      this.settings.export,
+      vaultReader
     );
 
     // 5. View

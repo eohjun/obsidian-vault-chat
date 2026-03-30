@@ -1,3 +1,5 @@
+import { estimateTokens } from '../../domain/utils/token-estimator';
+
 export interface NoteChunk {
   heading: string;
   headingLevel: number;
@@ -142,11 +144,8 @@ function prependTitle(content: string, noteTitle: string): string {
   return `# ${noteTitle}\n\n${content}`;
 }
 
-export function estimateTokens(text: string): number {
-  const koreanChars = (text.match(/[\uAC00-\uD7AF]/g) || []).length;
-  const otherChars = text.length - koreanChars;
-  return Math.ceil(koreanChars / 2 + otherChars / 4);
-}
+// Re-export from shared utility for backward compatibility
+export { estimateTokens } from '../../domain/utils/token-estimator';
 
 /**
  * Extract section content from a full note markdown by heading name.

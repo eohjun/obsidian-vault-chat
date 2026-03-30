@@ -11,7 +11,7 @@ export interface ChatSession {
 export function createChatSession(title?: string): ChatSession {
   const now = new Date().toISOString();
   return {
-    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
+    id: crypto.randomUUID(),
     title: title || 'New Chat',
     messages: [],
     createdAt: now,

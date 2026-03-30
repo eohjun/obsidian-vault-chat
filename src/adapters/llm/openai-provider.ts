@@ -6,7 +6,7 @@ import {
   parseOpenAIResponse,
   getOpenAIHeaders,
 } from 'obsidian-llm-shared';
-import { BaseProvider, AIRequestOptions } from './base-provider';
+import { BaseProvider, AIRequestOptions, StreamCallback } from './base-provider';
 
 export class OpenAIProvider extends BaseProvider {
   readonly id: AIProviderType = 'openai';
@@ -14,7 +14,6 @@ export class OpenAIProvider extends BaseProvider {
   async testApiKey(apiKey: string): Promise<boolean> {
     try {
       const headers = getOpenAIHeaders(apiKey);
-      // /v1/models only requires valid auth, no model dependency
       await this.makeRequest(
         `${this.config.endpoint}/models`,
         'GET',
@@ -28,7 +27,6 @@ export class OpenAIProvider extends BaseProvider {
           return false;
         }
       }
-      // Non-auth errors mean the key itself is valid
       return true;
     }
   }
@@ -45,10 +43,7 @@ export class OpenAIProvider extends BaseProvider {
       temperature: options?.temperature,
     });
 
-    // Remove reasoning param when not needed — avoids 400 from API
-    if (body.reasoning && (body.reasoning as any).effort === 'none') {
-      delete body.reasoning;
-    }
+
 
     try {
       const raw = await this.makeRequest<unknown>(
@@ -58,6 +53,59 @@ export class OpenAIProvider extends BaseProvider {
         JSON.stringify(body)
       );
       return parseOpenAIResponse(raw);
+    } catch (error) {
+      const normalized = this.normalizeError(error);
+      return {
+        success: false,
+        text: '',
+        model,
+        usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+        error: normalized.message,
+      };
+    }
+  }
+
+  async streamText(
+    messages: LLMMessage[],
+    apiKey: string,
+    onToken: StreamCallback,
+    options?: AIRequestOptions
+  ): Promise<LLMCompletionResponse> {
+    const model = options?.model || this.config.defaultModel;
+    const headers = getOpenAIHeaders(apiKey);
+    const body = buildOpenAIBody(messages, model, {
+      maxTokens: options?.maxTokens ?? 4096,
+      temperature: options?.temperature,
+    });
+
+    if (body.reasoning && (body.reasoning as any).effort === 'none') {
+      delete body.reasoning;
+    }
+
+    body.stream = true;
+
+    try {
+      const fullText = await this.streamSSE(
+        `${this.config.endpoint}/chat/completions`,
+        headers,
+        JSON.stringify(body),
+        onToken,
+        (json) => {
+          try {
+            const data = JSON.parse(json);
+            return data.choices?.[0]?.delta?.content ?? null;
+          } catch {
+            return null;
+          }
+        }
+      );
+
+      return {
+        success: true,
+        text: fullText,
+        model,
+        usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+      };
     } catch (error) {
       const normalized = this.normalizeError(error);
       return {

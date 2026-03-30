@@ -110,13 +110,26 @@ export class ChatView extends ItemView {
 
     this.isProcessing = true;
     this.inputBar.setDisabled(true);
-    this.setStatus('Searching notes and generating response...');
+    this.setStatus('Searching notes...');
 
     try {
-      await this.chatService.sendMessage(query);
+      // Render user message immediately
+      this.renderCurrentSession();
+
+      // Start streaming placeholder
+      this.messageList.startStreaming();
+      this.setStatus('');
+
+      await this.chatService.sendMessageStreaming(query, (token) => {
+        this.messageList.appendToken(token);
+      });
+
+      // Re-render with full markdown and session state
+      this.messageList.finishStreaming();
       this.renderCurrentSession();
       await this.sessionSelector.refresh();
     } catch (error) {
+      this.messageList.finishStreaming();
       const msg = error instanceof Error ? error.message : 'Unknown error';
       new Notice(`Vault Chat error: ${msg}`);
     } finally {

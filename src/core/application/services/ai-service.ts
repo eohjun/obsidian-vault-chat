@@ -3,7 +3,7 @@ import {
   LLMMessage,
   LLMCompletionResponse,
 } from 'obsidian-llm-shared';
-import { IAIProvider, AIRequestOptions } from '../../domain/interfaces/i-ai-provider';
+import { IAIProvider, AIRequestOptions, StreamCallback } from '../../domain/interfaces/i-ai-provider';
 import { executeWithRetry } from './retry-service';
 
 export interface AIServiceSettings {
@@ -80,5 +80,30 @@ export class AIService {
         return false;
       }
     );
+  }
+
+  async streamText(
+    messages: LLMMessage[],
+    onToken: StreamCallback,
+    options?: AIRequestOptions
+  ): Promise<LLMCompletionResponse> {
+    const provider = this.getCurrentProvider();
+    const apiKey = this.settings.apiKeys[this.settings.provider];
+    const fail = (error: string): LLMCompletionResponse => ({
+      success: false, text: '', model: '',
+      usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 }, error,
+    });
+
+    if (this.aborted) return fail('Plugin is unloading');
+    if (!provider) return fail('No provider selected');
+    if (!apiKey) return fail('No API key configured');
+
+    const mergedOptions: AIRequestOptions = {
+      model: this.settings.models[this.settings.provider],
+      temperature: this.settings.temperature,
+      ...options,
+    };
+
+    return provider.streamText(messages, apiKey, onToken, mergedOptions);
   }
 }

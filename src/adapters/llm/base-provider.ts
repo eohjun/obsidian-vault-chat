@@ -6,9 +6,9 @@ import {
   LLMMessage,
   LLMCompletionResponse,
 } from 'obsidian-llm-shared';
-import { IAIProvider, AIRequestOptions } from '../../core/domain/interfaces/i-ai-provider';
+import { IAIProvider, AIRequestOptions, StreamCallback } from '../../core/domain/interfaces/i-ai-provider';
 
-export type { AIRequestOptions } from '../../core/domain/interfaces/i-ai-provider';
+export type { AIRequestOptions, StreamCallback } from '../../core/domain/interfaces/i-ai-provider';
 
 export abstract class BaseProvider implements IAIProvider {
   abstract readonly id: AIProviderType;
@@ -36,6 +36,59 @@ export abstract class BaseProvider implements IAIProvider {
     return response.json as T;
   }
 
+  /**
+   * Stream SSE response using fetch(). Returns collected full text.
+   * Each provider calls this with its own SSE line parser.
+   */
+  protected async streamSSE(
+    url: string,
+    headers: Record<string, string>,
+    body: string,
+    onToken: StreamCallback,
+    parseLine: (line: string) => string | null
+  ): Promise<string> {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`API error (${response.status}): ${errorText}`);
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error('No response body');
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let fullText = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed === 'data: [DONE]') continue;
+        if (!trimmed.startsWith('data: ')) continue;
+
+        const token = parseLine(trimmed.slice(6));
+        if (token) {
+          fullText += token;
+          onToken(token);
+        }
+      }
+    }
+
+    return fullText;
+  }
+
   protected normalizeError(error: unknown): { message: string; code: string } {
     if (error instanceof Error) {
       const msg = error.message;
@@ -57,6 +110,12 @@ export abstract class BaseProvider implements IAIProvider {
   abstract generateText(
     messages: LLMMessage[],
     apiKey: string,
+    options?: AIRequestOptions
+  ): Promise<LLMCompletionResponse>;
+  abstract streamText(
+    messages: LLMMessage[],
+    apiKey: string,
+    onToken: StreamCallback,
     options?: AIRequestOptions
   ): Promise<LLMCompletionResponse>;
 }

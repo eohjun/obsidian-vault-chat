@@ -6,7 +6,7 @@ import {
   parseAnthropicResponse,
   getAnthropicHeaders,
 } from 'obsidian-llm-shared';
-import { BaseProvider, AIRequestOptions } from './base-provider';
+import { BaseProvider, AIRequestOptions, StreamCallback } from './base-provider';
 
 export class ClaudeProvider extends BaseProvider {
   readonly id: AIProviderType = 'claude';
@@ -14,7 +14,6 @@ export class ClaudeProvider extends BaseProvider {
   async testApiKey(apiKey: string): Promise<boolean> {
     try {
       const headers = getAnthropicHeaders(apiKey);
-      // Use a minimal messages request to validate the key
       const body = buildAnthropicBody(
         [{ role: 'user', content: 'Hi' }],
         'claude-haiku-4-5',
@@ -28,14 +27,12 @@ export class ClaudeProvider extends BaseProvider {
       );
       return true;
     } catch (error) {
-      // 401/403 = bad key, other errors (e.g. model not found) = key is valid
       if (error instanceof Error) {
         const msg = error.message;
         if (msg.includes('401') || msg.includes('403') || msg.includes('authentication') || msg.includes('invalid')) {
           return false;
         }
       }
-      // Non-auth errors mean the key itself is valid
       return true;
     }
   }
@@ -60,6 +57,58 @@ export class ClaudeProvider extends BaseProvider {
         JSON.stringify(body)
       );
       return parseAnthropicResponse(raw);
+    } catch (error) {
+      const normalized = this.normalizeError(error);
+      return {
+        success: false,
+        text: '',
+        model,
+        usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+        error: normalized.message,
+      };
+    }
+  }
+
+  async streamText(
+    messages: LLMMessage[],
+    apiKey: string,
+    onToken: StreamCallback,
+    options?: AIRequestOptions
+  ): Promise<LLMCompletionResponse> {
+    const model = options?.model || this.config.defaultModel;
+    const headers = getAnthropicHeaders(apiKey);
+    const body = buildAnthropicBody(messages, model, {
+      maxTokens: options?.maxTokens ?? 4096,
+      temperature: options?.temperature,
+    });
+
+    (body as any).stream = true;
+
+    try {
+      const fullText = await this.streamSSE(
+        `${this.config.endpoint}/messages`,
+        headers,
+        JSON.stringify(body),
+        onToken,
+        (json) => {
+          try {
+            const data = JSON.parse(json);
+            if (data.type === 'content_block_delta') {
+              return data.delta?.text ?? null;
+            }
+            return null;
+          } catch {
+            return null;
+          }
+        }
+      );
+
+      return {
+        success: true,
+        text: fullText,
+        model,
+        usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+      };
     } catch (error) {
       const normalized = this.normalizeError(error);
       return {

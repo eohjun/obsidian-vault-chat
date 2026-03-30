@@ -5,6 +5,7 @@ import { IVaultReader } from '../../domain/interfaces/i-vault-reader';
 import { IRetrievalService } from '../../domain/interfaces/i-retrieval-service';
 import { ISessionRepository } from '../../domain/interfaces/i-session-repository';
 import type { IEmbeddingGateway } from '../../domain/interfaces/i-embedding-gateway';
+import type { StreamCallback } from '../../domain/interfaces/i-ai-provider';
 import { AIService } from './ai-service';
 import { ContextBuilder, NoteContent } from './context-builder';
 import { ChunkSearchService } from './chunk-search-service';
@@ -127,6 +128,76 @@ export class ChatService {
     this.currentSession!.messages.push(assistantMessage);
 
     // 6. Save session
+    await this.sessionRepository.save(this.currentSession!);
+
+    return assistantMessage;
+  }
+
+  /**
+   * Send a message with streaming response.
+   * onToken is called for each received token chunk.
+   * Returns the final assistant message after stream completes.
+   */
+  async sendMessageStreaming(
+    query: string,
+    onToken: StreamCallback
+  ): Promise<ChatMessage> {
+    if (!this.currentSession) {
+      await this.createSession();
+    }
+
+    const userMessage = createChatMessage('user', query);
+    this.currentSession!.messages.push(userMessage);
+
+    if (this.currentSession!.messages.length === 1) {
+      this.currentSession!.title = query.slice(0, 50) + (query.length > 50 ? '...' : '');
+    }
+
+    // Search (same logic as sendMessage)
+    const useChunkSearch =
+      this.settings.retrieval.chunkSearch &&
+      this.chunkSearchService &&
+      this.embeddingGateway?.isAvailable();
+
+    let sources: SourceNote[];
+    let noteContents: NoteContent[];
+
+    if (useChunkSearch) {
+      const result = await this.searchByChunks(query);
+      sources = result.sources;
+      noteContents = result.noteContents;
+    } else {
+      sources = await this.retrievalService.search(query, {
+        limit: this.settings.retrieval.topK,
+        threshold: this.settings.retrieval.similarityThreshold,
+        targetFolder: this.settings.retrieval.targetFolder,
+      });
+      noteContents = await this.readNoteContents(sources);
+    }
+
+    // Build context
+    const currentModel = this.settings.ai.models[this.settings.ai.provider];
+    const modelConfig = getModelConfig(currentModel);
+    const contextWindow = modelConfig?.contextWindow ?? 128000;
+    const contextBuilder = new ContextBuilder(contextWindow);
+
+    const { messages: llmMessages } = contextBuilder.build(
+      query,
+      noteContents,
+      this.currentSession!.messages.slice(0, -1),
+      this.settings.chat.maxHistoryTurns
+    );
+
+    // Stream response
+    const response = await this.aiService.streamText(llmMessages, onToken);
+
+    const assistantMessage = createChatMessage(
+      'assistant',
+      response.success ? response.text : `Error: ${response.error}`,
+      sources
+    );
+
+    this.currentSession!.messages.push(assistantMessage);
     await this.sessionRepository.save(this.currentSession!);
 
     return assistantMessage;

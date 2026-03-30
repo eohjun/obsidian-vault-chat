@@ -14,6 +14,9 @@ export interface VaultChatSettings {
     topK: number;
     similarityThreshold: number;
     targetFolder: string;
+    chunkSearch: boolean;
+    topKChunks: number;
+    maxChunkTokens: number;
   };
   chat: {
     maxHistoryTurns: number;
@@ -39,6 +42,9 @@ export const DEFAULT_SETTINGS: VaultChatSettings = {
     topK: 10,
     similarityThreshold: 0.3,
     targetFolder: '04_Zettelkasten',
+    chunkSearch: false,
+    topKChunks: 15,
+    maxChunkTokens: 1500,
   },
   chat: {
     maxHistoryTurns: 10,

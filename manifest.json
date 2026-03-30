@@ -1,7 +1,7 @@
 {
   "id": "vault-chat",
   "name": "Vault Chat",
-  "version": "0.1.4",
+  "version": "0.2.0",
   "minAppVersion": "1.5.0",
   "description": "Chat with your vault using RAG. Ask questions and get answers based on your Zettelkasten notes.",
   "author": "eohjun",

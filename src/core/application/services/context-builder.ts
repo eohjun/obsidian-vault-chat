@@ -6,6 +6,8 @@ export interface NoteContent {
   path: string;
   content: string;
   similarity: number;
+  sectionHeading?: string;
+  chunkId?: string;
 }
 
 export interface ContextBuildResult {
@@ -19,6 +21,7 @@ const SYSTEM_PROMPT = `You are a knowledgeable assistant that answers questions 
 Rules:
 - Answer ONLY based on the provided note contents. If the notes don't contain relevant information, say so.
 - Reference source notes using [[Note Title]] wiki-link syntax naturally within your answer.
+- When referring to a specific section of a note, use [[Note Title#Section Heading]] syntax.
 - Write in the same language the user uses for their question.
 - Be concise and direct. Use bullet points for complex answers.
 - Do not fabricate information not present in the provided notes.`;
@@ -41,10 +44,12 @@ export class ContextBuilder {
     // 1. System prompt
     messages.push({ role: 'system', content: SYSTEM_PROMPT });
 
-    // 2. Note context
+    // 2. Note context (auto-detect chunk mode via sectionHeading)
     const maxNoteTokens = Math.floor(this.contextWindowTokens * this.maxContextRatio);
-    const { text: noteContext, count: includedNotes, wasTruncated } =
-      this.buildNoteContext(noteContents, maxNoteTokens);
+    const isChunkMode = noteContents.some((n) => n.sectionHeading);
+    const { text: noteContext, count: includedNotes, wasTruncated } = isChunkMode
+      ? this.buildChunkContext(noteContents, maxNoteTokens)
+      : this.buildNoteContext(noteContents, maxNoteTokens);
 
     if (noteContext) {
       messages.push({
@@ -73,6 +78,70 @@ export class ContextBuilder {
     messages.push({ role: 'user', content: query });
 
     return { messages, includedNotes, truncated };
+  }
+
+  buildChunkContext(
+    chunks: NoteContent[],
+    maxTokens: number
+  ): { text: string; count: number; wasTruncated: boolean } {
+    // Group chunks by note, preserving per-chunk similarity for ordering
+    const noteGroups = new Map<string, NoteContent[]>();
+    for (const chunk of chunks) {
+      const key = chunk.path;
+      if (!noteGroups.has(key)) {
+        noteGroups.set(key, []);
+      }
+      noteGroups.get(key)!.push(chunk);
+    }
+
+    // Sort groups by best similarity within each group
+    const sortedGroups = Array.from(noteGroups.entries()).sort(
+      (a, b) => {
+        const bestA = Math.max(...a[1].map((c) => c.similarity));
+        const bestB = Math.max(...b[1].map((c) => c.similarity));
+        return bestB - bestA;
+      }
+    );
+
+    const parts: string[] = [];
+    let totalTokens = 0;
+    let count = 0;
+    let wasTruncated = false;
+
+    for (const [, noteChunks] of sortedGroups) {
+      const noteTitle = noteChunks[0].title;
+
+      // Sort chunks within same note by sectionIndex (original document order)
+      // sectionIndex not directly available here, so use the order they appear
+      const chunkTexts: string[] = [];
+      for (const chunk of noteChunks) {
+        const heading = chunk.sectionHeading
+          ? `#### ${chunk.sectionHeading}`
+          : '';
+        chunkTexts.push(heading ? `${heading}\n${chunk.content}` : chunk.content);
+      }
+
+      const noteText = `### [[${noteTitle}]]\n${chunkTexts.join('\n\n')}\n---`;
+      const tokens = this.estimateTokens(noteText);
+
+      if (totalTokens + tokens > maxTokens) {
+        const remaining = maxTokens - totalTokens;
+        if (remaining > 200) {
+          const joined = chunkTexts.join('\n\n');
+          const truncated = joined.slice(0, remaining * 3);
+          parts.push(`### [[${noteTitle}]]\n${truncated}...\n---`);
+          count++;
+        }
+        wasTruncated = true;
+        break;
+      }
+
+      parts.push(noteText);
+      totalTokens += tokens;
+      count++;
+    }
+
+    return { text: parts.join('\n\n'), count, wasTruncated };
   }
 
   private buildNoteContext(

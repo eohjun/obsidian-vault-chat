@@ -172,6 +172,71 @@ export class VaultChatSettingTab extends PluginSettingTab {
             await this.plugin.saveSettings();
           })
       );
+
+    // Chunk search settings
+    containerEl.createEl('h4', { text: 'Chunk Search' });
+
+    new Setting(containerEl)
+      .setName('Enable Chunk Search')
+      .setDesc(
+        'Split notes into sections and search at section level for more precise results. Requires Vault Embeddings plugin.'
+      )
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.retrieval.chunkSearch)
+          .onChange(async (value) => {
+            this.plugin.settings.retrieval.chunkSearch = value;
+            await this.plugin.saveSettings();
+            this.display();
+          })
+      );
+
+    if (this.plugin.settings.retrieval.chunkSearch) {
+      new Setting(containerEl)
+        .setName('Top K Chunks')
+        .setDesc('Number of chunk results to include as context')
+        .addSlider((slider) =>
+          slider
+            .setLimits(5, 30, 1)
+            .setValue(this.plugin.settings.retrieval.topKChunks)
+            .setDynamicTooltip()
+            .onChange(async (value) => {
+              this.plugin.settings.retrieval.topKChunks = value;
+              await this.plugin.saveSettings();
+            })
+        );
+
+      new Setting(containerEl)
+        .setName('Build Chunk Index')
+        .setDesc('Build or update the chunk index for all notes')
+        .addButton((button) =>
+          button
+            .setButtonText('Build Index')
+            .setCta()
+            .onClick(async () => {
+              button.setDisabled(true);
+              button.setButtonText('Building...');
+              try {
+                await this.plugin.buildChunkIndex();
+                new Notice('Chunk index built successfully');
+              } catch (e) {
+                new Notice(`Failed to build chunk index: ${e}`);
+              } finally {
+                button.setDisabled(false);
+                button.setButtonText('Build Index');
+              }
+            })
+        )
+        .addButton((button) =>
+          button
+            .setButtonText('Clear Index')
+            .setWarning()
+            .onClick(async () => {
+              await this.plugin.clearChunkIndex();
+              new Notice('Chunk index cleared');
+            })
+        );
+    }
   }
 
   private renderChatSection(containerEl: HTMLElement): void {

@@ -23,6 +23,8 @@ interface VaultEmbeddingsPlugin {
       similarity: number;
     }>
   >;
+  embedQuery(text: string): Promise<number[]>;
+  getProviderInfo(): { provider: string; model: string; dimensions: number } | null;
 }
 
 export class VaultEmbeddingsRetriever implements IRetrievalService {

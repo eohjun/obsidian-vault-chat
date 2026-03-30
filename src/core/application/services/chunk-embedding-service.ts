@@ -255,27 +255,37 @@ export class ChunkEmbeddingService {
     noteTitle: string,
     dimensions: number
   ): Promise<ChunkEmbedding[]> {
-    const results: ChunkEmbedding[] = [];
     const now = new Date().toISOString();
+    const concurrency = 5;
+    const results: ChunkEmbedding[] = [];
 
-    for (const chunk of chunks) {
-      const vector = await this.embeddingGateway.embedText(chunk.content);
-      const chunkId = createChunkId(noteId, chunk.sectionIndex);
-
-      results.push({
-        chunkId,
-        noteId,
-        notePath,
-        noteTitle,
-        sectionHeading: chunk.heading,
-        headingLevel: chunk.headingLevel,
-        sectionIndex: chunk.sectionIndex,
-        contentHash: await hashContent(chunk.content),
-        vector,
-        dimensions,
-        createdAt: now,
-        updatedAt: now,
-      });
+    // Process in parallel batches of `concurrency`
+    for (let i = 0; i < chunks.length; i += concurrency) {
+      const batch = chunks.slice(i, i + concurrency);
+      const batchResults = await Promise.all(
+        batch.map(async (chunk) => {
+          const [vector, contentHash] = await Promise.all([
+            this.embeddingGateway.embedText(chunk.content),
+            hashContent(chunk.content),
+          ]);
+          const chunkId = createChunkId(noteId, chunk.sectionIndex);
+          return {
+            chunkId,
+            noteId,
+            notePath,
+            noteTitle,
+            sectionHeading: chunk.heading,
+            headingLevel: chunk.headingLevel,
+            sectionIndex: chunk.sectionIndex,
+            contentHash,
+            vector,
+            dimensions,
+            createdAt: now,
+            updatedAt: now,
+          } as ChunkEmbedding;
+        })
+      );
+      results.push(...batchResults);
     }
 
     return results;

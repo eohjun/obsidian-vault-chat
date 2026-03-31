@@ -7,6 +7,7 @@ export interface ChunkEmbedding {
   headingLevel: number;
   sectionIndex: number;
   contentHash: string;
+  content?: string;
   vector: number[];
   dimensions: number;
   createdAt: string;

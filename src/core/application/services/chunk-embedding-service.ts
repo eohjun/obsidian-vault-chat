@@ -278,6 +278,7 @@ export class ChunkEmbeddingService {
             headingLevel: chunk.headingLevel,
             sectionIndex: chunk.sectionIndex,
             contentHash,
+            content: chunk.content,
             vector,
             dimensions,
             createdAt: now,

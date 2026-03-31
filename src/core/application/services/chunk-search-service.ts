@@ -1,5 +1,6 @@
 import type { ChunkEmbedding } from '../../domain/entities/chunk-embedding';
 import type { IChunkRepository } from '../../domain/interfaces/i-chunk-repository';
+import { buildBM25Index, scoreAllBM25 } from '../../domain/utils/bm25';
 
 export interface ChunkSearchResult {
   chunkId: string;
@@ -15,6 +16,12 @@ export interface ChunkSearchOptions {
   limit: number;
   threshold: number;
   excludeFolders?: string[];
+  /** Enable hybrid search (vector + BM25). Requires chunks to have content field. */
+  hybridSearch?: boolean;
+  /** Weight for vector similarity in hybrid mode (0-1). Default: 0.7 */
+  hybridAlpha?: number;
+  /** Original query text, required for hybrid search */
+  queryText?: string;
 }
 
 export class ChunkSearchService {
@@ -25,27 +32,52 @@ export class ChunkSearchService {
     options: ChunkSearchOptions
   ): Promise<ChunkSearchResult[]> {
     const allChunks = await this.chunkRepository.findAll();
-    const results: ChunkSearchResult[] = [];
 
-    for (const chunk of allChunks) {
-      if (
-        options.excludeFolders?.some((folder) =>
+    // Filter excluded folders
+    const chunks = allChunks.filter(
+      (chunk) =>
+        !options.excludeFolders?.some((folder) =>
           chunk.notePath.startsWith(folder + '/')
         )
-      ) {
-        continue;
-      }
+    );
 
-      const similarity = cosineSimilarity(queryVector, chunk.vector);
-      if (similarity >= options.threshold) {
+    // Compute vector similarities
+    const vectorScores = chunks.map((chunk) =>
+      cosineSimilarity(queryVector, chunk.vector)
+    );
+
+    // Compute BM25 scores if hybrid mode enabled
+    let finalScores: number[];
+
+    if (
+      options.hybridSearch &&
+      options.queryText &&
+      chunks.some((c) => c.content)
+    ) {
+      const alpha = options.hybridAlpha ?? 0.7;
+      const documents = chunks.map((c) => c.content || '');
+      const bm25Index = buildBM25Index(documents);
+      const bm25Scores = scoreAllBM25(options.queryText, bm25Index);
+
+      finalScores = vectorScores.map(
+        (vs, i) => alpha * vs + (1 - alpha) * bm25Scores[i]
+      );
+    } else {
+      finalScores = vectorScores;
+    }
+
+    // Build results, filter by threshold, sort, and limit
+    const results: ChunkSearchResult[] = [];
+    for (let i = 0; i < chunks.length; i++) {
+      if (finalScores[i] >= options.threshold) {
         results.push({
-          chunkId: chunk.chunkId,
-          noteId: chunk.noteId,
-          notePath: chunk.notePath,
-          noteTitle: chunk.noteTitle,
-          sectionHeading: chunk.sectionHeading,
-          sectionIndex: chunk.sectionIndex,
-          similarity,
+          chunkId: chunks[i].chunkId,
+          noteId: chunks[i].noteId,
+          notePath: chunks[i].notePath,
+          noteTitle: chunks[i].noteTitle,
+          sectionHeading: chunks[i].sectionHeading,
+          sectionIndex: chunks[i].sectionIndex,
+          similarity: finalScores[i],
         });
       }
     }

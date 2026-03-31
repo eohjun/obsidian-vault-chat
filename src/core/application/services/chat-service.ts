@@ -7,6 +7,7 @@ import { ISessionRepository } from '../../domain/interfaces/i-session-repository
 import type { IEmbeddingGateway } from '../../domain/interfaces/i-embedding-gateway';
 import type { StreamCallback } from '../../domain/interfaces/i-ai-provider';
 import { AIService } from './ai-service';
+import { RerankService } from './rerank-service';
 import { ContextBuilder, NoteContent } from './context-builder';
 import { ChunkSearchService } from './chunk-search-service';
 import { extractSectionContent } from './note-chunker';
@@ -19,12 +20,16 @@ export interface ChatServiceConfig {
     targetFolder: string;
     chunkSearch?: boolean;
     topKChunks?: number;
+    hybridSearch?: boolean;
+    hybridAlpha?: number;
+    rerank?: boolean;
   };
   chat: { maxHistoryTurns: number; maxSessions: number };
 }
 
 export class ChatService {
   private currentSession: ChatSession | null = null;
+  private rerankService: RerankService;
 
   constructor(
     private readonly vaultReader: IVaultReader,
@@ -34,7 +39,9 @@ export class ChatService {
     private settings: ChatServiceConfig,
     private chunkSearchService?: ChunkSearchService,
     private embeddingGateway?: IEmbeddingGateway
-  ) {}
+  ) {
+    this.rerankService = new RerankService(aiService);
+  }
 
   updateSettings(settings: ChatServiceConfig): void {
     this.settings = settings;
@@ -214,37 +221,34 @@ export class ChatService {
       (folder: string) => !folder.startsWith(this.settings.retrieval.targetFolder)
     );
 
+    const hybridEnabled = this.settings.retrieval.hybridSearch ?? false;
+
     const chunkResults = await this.chunkSearchService!.search(queryVector, {
       limit: this.settings.retrieval.topKChunks ?? 15,
       threshold: this.settings.retrieval.similarityThreshold,
       excludeFolders,
+      hybridSearch: hybridEnabled,
+      hybridAlpha: this.settings.retrieval.hybridAlpha,
+      queryText: hybridEnabled ? query : undefined,
     });
 
     // Read note contents and extract section content
     const sources: SourceNote[] = [];
     const noteContents: NoteContent[] = [];
-    const seenNotes = new Set<string>();
 
     for (const result of chunkResults) {
-      // Track unique source notes
-      if (!seenNotes.has(result.notePath)) {
-        seenNotes.add(result.notePath);
-      }
-
-      sources.push({
-        notePath: result.notePath,
-        title: result.noteTitle,
-        similarity: result.similarity,
-        sectionHeading: result.sectionHeading,
-      });
-
-      // Read full note and extract the matching section
       const fullContent = await this.vaultReader.readNote(result.notePath);
       if (fullContent) {
         const sectionContent = extractSectionContent(
           fullContent,
           result.sectionHeading
         );
+        sources.push({
+          notePath: result.notePath,
+          title: result.noteTitle,
+          similarity: result.similarity,
+          sectionHeading: result.sectionHeading,
+        });
         noteContents.push({
           title: result.noteTitle,
           path: result.notePath,
@@ -254,6 +258,23 @@ export class ChatService {
           chunkId: result.chunkId,
         });
       }
+    }
+
+    // LLM reranking (optional)
+    if (this.settings.retrieval.rerank && noteContents.length > 1) {
+      const candidates = noteContents.map((nc, i) => ({
+        index: i,
+        title: nc.title,
+        sectionHeading: nc.sectionHeading || '',
+        content: nc.content,
+      }));
+
+      const rerankedOrder = await this.rerankService.rerank(query, candidates);
+
+      const rerankedSources = rerankedOrder.map((i) => sources[i]);
+      const rerankedContents = rerankedOrder.map((i) => noteContents[i]);
+
+      return { sources: rerankedSources, noteContents: rerankedContents };
     }
 
     return { sources, noteContents };

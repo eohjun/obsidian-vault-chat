@@ -17,6 +17,9 @@ export interface VaultChatSettings {
     chunkSearch: boolean;
     topKChunks: number;
     maxChunkTokens: number;
+    hybridSearch: boolean;
+    hybridAlpha: number;
+    rerank: boolean;
   };
   chat: {
     maxHistoryTurns: number;
@@ -46,6 +49,9 @@ export const DEFAULT_SETTINGS: VaultChatSettings = {
     chunkSearch: false,
     topKChunks: 15,
     maxChunkTokens: 1500,
+    hybridSearch: true,
+    hybridAlpha: 0.7,
+    rerank: false,
   },
   chat: {
     maxHistoryTurns: 10,

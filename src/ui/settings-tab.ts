@@ -206,6 +206,53 @@ export class VaultChatSettingTab extends PluginSettingTab {
             })
         );
 
+      new Setting(containerEl)
+        .setName('Hybrid Search (BM25 + Vector)')
+        .setDesc(
+          'Combine keyword matching with semantic search for better recall. Requires index rebuild to store chunk text.'
+        )
+        .addToggle((toggle) =>
+          toggle
+            .setValue(this.plugin.settings.retrieval.hybridSearch)
+            .onChange(async (value) => {
+              this.plugin.settings.retrieval.hybridSearch = value;
+              await this.plugin.saveSettings();
+              this.display();
+            })
+        );
+
+      if (this.plugin.settings.retrieval.hybridSearch) {
+        new Setting(containerEl)
+          .setName('Vector Weight (α)')
+          .setDesc(
+            'Balance between vector similarity (1.0) and keyword matching (0.0). Default: 0.7'
+          )
+          .addSlider((slider) =>
+            slider
+              .setLimits(0.1, 0.9, 0.1)
+              .setValue(this.plugin.settings.retrieval.hybridAlpha)
+              .setDynamicTooltip()
+              .onChange(async (value) => {
+                this.plugin.settings.retrieval.hybridAlpha = value;
+                await this.plugin.saveSettings();
+              })
+          );
+      }
+
+      new Setting(containerEl)
+        .setName('LLM Reranking')
+        .setDesc(
+          'Use LLM to reorder search results by relevance. Improves precision but adds one API call per query.'
+        )
+        .addToggle((toggle) =>
+          toggle
+            .setValue(this.plugin.settings.retrieval.rerank)
+            .onChange(async (value) => {
+              this.plugin.settings.retrieval.rerank = value;
+              await this.plugin.saveSettings();
+            })
+        );
+
       // Index Health Dashboard
       this.renderIndexDashboard(containerEl);
 

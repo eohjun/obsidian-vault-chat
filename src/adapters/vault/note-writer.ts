@@ -1,4 +1,4 @@
-import { App, normalizePath } from 'obsidian';
+import { App, normalizePath, TFile } from 'obsidian';
 import { INoteWriter } from '../../core/domain/interfaces/i-note-writer';
 
 export class NoteWriter implements INoteWriter {
@@ -21,5 +21,20 @@ export class NoteWriter implements INoteWriter {
 
   async createFolder(path: string): Promise<void> {
     await this.app.vault.createFolder(path);
+  }
+
+  async appendToNote(notePath: string, content: string): Promise<void> {
+    const file = this.app.vault.getAbstractFileByPath(notePath);
+    if (!(file instanceof TFile)) {
+      throw new Error(`File not found: ${notePath}`);
+    }
+    await this.app.vault.process(file, (data) => data + '\n\n' + content);
+  }
+
+  async insertAtCursor(content: string): Promise<boolean> {
+    const editor = this.app.workspace.activeEditor?.editor;
+    if (!editor) return false;
+    editor.replaceSelection(content);
+    return true;
   }
 }

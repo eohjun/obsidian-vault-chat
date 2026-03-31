@@ -1,11 +1,14 @@
 import { ItemView, WorkspaceLeaf, Notice } from 'obsidian';
 import { ChatService } from '../core/application/services/chat-service';
 import { NoteExportService } from '../core/application/services/note-export-service';
+import { MessageApplyService } from '../core/application/services/message-apply-service';
 import { IRetrievalService } from '../core/domain/interfaces/i-retrieval-service';
 import { ChatSession } from '../core/domain/entities/chat-session';
+import { VaultChatSettings } from '../settings';
 import { MessageList } from './components/message-list';
 import { InputBar } from './components/input-bar';
 import { SessionSelector } from './components/session-selector';
+import { NoteSuggestModal } from './components/note-suggest-modal';
 
 export const VIEW_TYPE_VAULT_CHAT = 'vault-chat-view';
 
@@ -20,7 +23,9 @@ export class ChatView extends ItemView {
     leaf: WorkspaceLeaf,
     private readonly chatService: ChatService,
     private readonly noteExportService: NoteExportService,
-    private readonly retrievalService: IRetrievalService
+    private readonly retrievalService: IRetrievalService,
+    private readonly messageApplyService: MessageApplyService,
+    private readonly settings: VaultChatSettings
   ) {
     super(leaf);
   }
@@ -66,7 +71,57 @@ export class ChatView extends ItemView {
 
     // Message area
     const messageArea = (container as HTMLElement).createEl('div', { cls: 'vault-chat-messages' });
-    this.messageList = new MessageList(messageArea, this.app);
+    this.messageList = new MessageList(messageArea, this.app, {
+      actionCallbacks: {
+        onCopy: async (content) => {
+          try {
+            await navigator.clipboard.writeText(content);
+            new Notice('Copied to clipboard');
+          } catch {
+            new Notice('Failed to copy to clipboard');
+          }
+        },
+        onInsertAtCursor: async (content) => {
+          const ok = await this.messageApplyService.insertAtCursor(content);
+          new Notice(ok ? 'Inserted at cursor' : 'No active editor — open a note first');
+        },
+        onAppendToNote: async (content) => {
+          const activeFile = this.app.workspace.getActiveFile();
+          if (!activeFile) {
+            new Notice('No active note — open a note first');
+            return;
+          }
+          try {
+            await this.messageApplyService.appendToNote(activeFile.path, content);
+            new Notice(`Appended to ${activeFile.basename}`);
+          } catch (e) {
+            new Notice(`Failed to append: ${e}`);
+          }
+        },
+        onCreateNewNote: async (content) => {
+          try {
+            const path = await this.messageApplyService.createNewNote(content);
+            new Notice(`Note created: ${path}`);
+          } catch (e) {
+            new Notice(`Failed to create note: ${e}`);
+          }
+        },
+        onInsertIntoNote: (content) => {
+          new NoteSuggestModal(this.app, async (file) => {
+            try {
+              await this.messageApplyService.appendToNote(file.path, content);
+              new Notice(`Inserted into ${file.basename}`);
+            } catch (e) {
+              new Notice(`Failed to insert: ${e}`);
+            }
+          }).open();
+        },
+      },
+      examplePrompts: this.settings.chat.examplePrompts,
+      onExamplePromptClick: (prompt) => {
+        this.handleSend(prompt);
+      },
+    });
 
     // Status indicator
     this.statusEl = (container as HTMLElement).createEl('div', { cls: 'vault-chat-status' });

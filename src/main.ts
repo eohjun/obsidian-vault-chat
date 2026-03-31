@@ -4,6 +4,7 @@ import { VaultChatSettings, DEFAULT_SETTINGS } from './settings';
 import { AIService } from './core/application/services/ai-service';
 import { ChatService } from './core/application/services/chat-service';
 import { NoteExportService } from './core/application/services/note-export-service';
+import { MessageApplyService } from './core/application/services/message-apply-service';
 import { ChunkEmbeddingService, INoteFileProvider, NoteFile } from './core/application/services/chunk-embedding-service';
 import { ChunkSearchService } from './core/application/services/chunk-search-service';
 import { VaultEmbeddingsRetriever } from './adapters/retrieval/vault-embeddings-retriever';
@@ -37,11 +38,13 @@ export default class VaultChatPlugin extends Plugin {
   aiService!: AIService;
   private chatService!: ChatService;
   private noteExportService!: NoteExportService;
+  private messageApplyService!: MessageApplyService;
   private retrievalService!: VaultEmbeddingsRetriever;
-  private chunkEmbeddingService?: ChunkEmbeddingService;
+  chunkEmbeddingService?: ChunkEmbeddingService;
   private chunkSearchService?: ChunkSearchService;
   private embeddingGateway?: VaultEmbeddingsGateway;
   private chunkRepository?: ChunkEmbeddingRepository;
+  private noteFileProvider?: ObsidianNoteFileProvider;
 
   async onload(): Promise<void> {
     // 1. Settings
@@ -65,11 +68,12 @@ export default class VaultChatPlugin extends Plugin {
     await this.chunkRepository.initialize();
 
     this.chunkSearchService = new ChunkSearchService(this.chunkRepository);
+    this.noteFileProvider = new ObsidianNoteFileProvider(this.app);
     this.chunkEmbeddingService = new ChunkEmbeddingService(
       this.chunkRepository,
       this.embeddingGateway,
       vaultReader,
-      new ObsidianNoteFileProvider(this.app)
+      this.noteFileProvider
     );
 
     // 4. Chat service (with optional chunk search)
@@ -88,10 +92,21 @@ export default class VaultChatPlugin extends Plugin {
       this.settings.export,
       vaultReader
     );
+    this.messageApplyService = new MessageApplyService(
+      noteWriter,
+      this.settings.export
+    );
 
     // 5. View
     this.registerView(VIEW_TYPE_VAULT_CHAT, (leaf) =>
-      new ChatView(leaf, this.chatService, this.noteExportService, this.retrievalService)
+      new ChatView(
+        leaf,
+        this.chatService,
+        this.noteExportService,
+        this.retrievalService,
+        this.messageApplyService,
+        this.settings
+      )
     );
 
     // 6. Commands
@@ -136,11 +151,15 @@ export default class VaultChatPlugin extends Plugin {
   }
 
   async loadSettings(): Promise<void> {
-    this.settings = Object.assign(
-      {},
-      DEFAULT_SETTINGS,
-      await this.loadData()
-    );
+    const saved = await this.loadData();
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, saved);
+    // Deep-merge nested objects so new fields get defaults
+    if (saved) {
+      this.settings.ai = Object.assign({}, DEFAULT_SETTINGS.ai, saved.ai);
+      this.settings.retrieval = Object.assign({}, DEFAULT_SETTINGS.retrieval, saved.retrieval);
+      this.settings.chat = Object.assign({}, DEFAULT_SETTINGS.chat, saved.chat);
+      this.settings.export = Object.assign({}, DEFAULT_SETTINGS.export, saved.export);
+    }
   }
 
   async saveSettings(): Promise<void> {
@@ -148,6 +167,21 @@ export default class VaultChatPlugin extends Plugin {
     this.aiService.updateSettings(this.settings.ai);
     this.chatService.updateSettings(this.settings);
     this.noteExportService.updateSettings(this.settings.export);
+    this.messageApplyService.updateSettings(this.settings.export);
+  }
+
+  async getIndexStats(): Promise<{
+    totalChunks: number;
+    totalNotes: number;
+    lastUpdated: string | null;
+    notesInTargetFolder: number;
+  } | null> {
+    if (!this.chunkEmbeddingService) return null;
+    const stats = await this.chunkEmbeddingService.getStats();
+    const notesInFolder = this.noteFileProvider
+      ? this.noteFileProvider.getNotesInFolder(this.settings.retrieval.targetFolder, []).length
+      : 0;
+    return { ...stats, notesInTargetFolder: notesInFolder };
   }
 
   async buildChunkIndex(): Promise<void> {

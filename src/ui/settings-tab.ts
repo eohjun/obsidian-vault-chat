@@ -206,6 +206,9 @@ export class VaultChatSettingTab extends PluginSettingTab {
             })
         );
 
+      // Index Health Dashboard
+      this.renderIndexDashboard(containerEl);
+
       new Setting(containerEl)
         .setName('Build Chunk Index')
         .setDesc('Build or update the chunk index for all notes')
@@ -219,6 +222,7 @@ export class VaultChatSettingTab extends PluginSettingTab {
               try {
                 await this.plugin.buildChunkIndex();
                 new Notice('Chunk index built successfully');
+                this.display(); // Refresh to update dashboard
               } catch (e) {
                 new Notice(`Failed to build chunk index: ${e}`);
               } finally {
@@ -234,9 +238,63 @@ export class VaultChatSettingTab extends PluginSettingTab {
             .onClick(async () => {
               await this.plugin.clearChunkIndex();
               new Notice('Chunk index cleared');
+              this.display(); // Refresh to update dashboard
             })
         );
     }
+  }
+
+  private renderIndexDashboard(containerEl: HTMLElement): void {
+    const dashboardEl = containerEl.createEl('div', { cls: 'vault-chat-index-dashboard' });
+    dashboardEl.createEl('div', {
+      cls: 'vault-chat-index-dashboard-loading',
+      text: 'Loading index stats...',
+    });
+
+    this.plugin.getIndexStats().then((stats) => {
+      dashboardEl.empty();
+      if (!stats) {
+        dashboardEl.createEl('div', { text: 'Index service not available' });
+        return;
+      }
+
+      const { totalNotes, totalChunks, lastUpdated, notesInTargetFolder } = stats;
+      const pending = notesInTargetFolder - totalNotes;
+
+      // Status dot + label
+      const statusEl = dashboardEl.createEl('div', { cls: 'vault-chat-index-status' });
+      let dotCls: string;
+      let statusText: string;
+      if (totalChunks === 0) {
+        dotCls = 'vault-chat-index-dot-gray';
+        statusText = 'No index';
+      } else if (pending <= 0) {
+        dotCls = 'vault-chat-index-dot-green';
+        statusText = 'Up to date';
+      } else {
+        dotCls = 'vault-chat-index-dot-yellow';
+        statusText = `${pending} notes pending`;
+      }
+      statusEl.createEl('span', { cls: `vault-chat-index-dot ${dotCls}` });
+      statusEl.createEl('span', { text: statusText });
+
+      // Stats
+      const statsEl = dashboardEl.createEl('div', { cls: 'vault-chat-index-stats' });
+      statsEl.createEl('div', {
+        cls: 'vault-chat-index-stat',
+        text: `Indexed notes: ${totalNotes} / ${notesInTargetFolder}`,
+      });
+      statsEl.createEl('div', {
+        cls: 'vault-chat-index-stat',
+        text: `Total chunks: ${totalChunks.toLocaleString()}`,
+      });
+      if (lastUpdated) {
+        statsEl.createEl('div', {
+          cls: 'vault-chat-index-stat',
+          text: `Last updated: ${lastUpdated.split('T')[0]}`,
+        });
+      }
+    });
   }
 
   private renderChatSection(containerEl: HTMLElement): void {

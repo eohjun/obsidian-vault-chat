@@ -120,6 +120,182 @@
   font-size: var(--font-ui-smaller);
 }
 
+/* Message Actions */
+.vault-chat-message-actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.vault-chat-message:hover .vault-chat-message-actions {
+  opacity: 1;
+}
+
+.vault-chat-action-btn {
+  font-size: var(--font-ui-smaller);
+  padding: 2px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  color: var(--text-muted);
+}
+
+.vault-chat-action-btn:hover {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover);
+}
+
+.vault-chat-action-btn-feedback {
+  color: var(--text-success);
+}
+
+/* Apply Dropdown */
+.vault-chat-apply-dropdown {
+  position: relative;
+}
+
+.vault-chat-apply-menu {
+  display: none;
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  min-width: 180px;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  box-shadow: var(--shadow-s);
+  z-index: 10;
+  margin-bottom: 4px;
+}
+
+.vault-chat-apply-menu.is-visible {
+  display: block;
+}
+
+.vault-chat-apply-menu-item {
+  padding: 6px 12px;
+  font-size: var(--font-ui-smaller);
+  cursor: pointer;
+  color: var(--text-normal);
+}
+
+.vault-chat-apply-menu-item:hover {
+  background: var(--background-modifier-hover);
+}
+
+.vault-chat-apply-menu-item:first-child {
+  border-radius: 6px 6px 0 0;
+}
+
+.vault-chat-apply-menu-item:last-child {
+  border-radius: 0 0 6px 6px;
+}
+
+/* Welcome State */
+.vault-chat-welcome {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 40px 20px;
+  color: var(--text-muted);
+}
+
+.vault-chat-welcome-icon {
+  font-size: 2em;
+  margin-bottom: 8px;
+}
+
+.vault-chat-welcome h3 {
+  margin: 0 0 4px 0;
+  color: var(--text-normal);
+}
+
+.vault-chat-welcome-desc {
+  margin-bottom: 16px;
+  font-size: var(--font-ui-small);
+}
+
+.vault-chat-example-prompts {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  max-width: 300px;
+}
+
+.vault-chat-example-prompt {
+  text-align: left;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: var(--font-ui-smaller);
+  cursor: pointer;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  color: var(--text-normal);
+  transition: border-color 0.15s ease;
+}
+
+.vault-chat-example-prompt:hover {
+  border-color: var(--interactive-accent);
+}
+
+/* Index Health Dashboard */
+.vault-chat-index-dashboard {
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin: 8px 0 16px 0;
+}
+
+.vault-chat-index-dashboard-loading {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  font-style: italic;
+}
+
+.vault-chat-index-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-semibold);
+}
+
+.vault-chat-index-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.vault-chat-index-dot-green {
+  background-color: var(--text-success);
+}
+
+.vault-chat-index-dot-yellow {
+  background-color: var(--text-warning);
+}
+
+.vault-chat-index-dot-gray {
+  background-color: var(--text-muted);
+}
+
+.vault-chat-index-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.vault-chat-index-stat {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+
 /* Unavailable state */
 .vault-chat-unavailable {
   padding: 40px 20px;

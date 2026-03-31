@@ -21,6 +21,7 @@ export interface VaultChatSettings {
   chat: {
     maxHistoryTurns: number;
     maxSessions: number;
+    examplePrompts: string[];
   };
   export: {
     outputFolder: string;
@@ -49,6 +50,12 @@ export const DEFAULT_SETTINGS: VaultChatSettings = {
   chat: {
     maxHistoryTurns: 10,
     maxSessions: 5,
+    examplePrompts: [
+      'What are the key themes across my recent notes?',
+      'Summarize what I know about...',
+      'Find connections between my notes on...',
+      'What have I written about that relates to...',
+    ],
   },
   export: {
     outputFolder: '03_Resources/Literature_Notes',
